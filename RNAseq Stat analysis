@@ -1,0 +1,563 @@
+Hi, this code works in Rstudio, Rmarkdown.
+
+NB/ It is a preview need to be opti for any RNAseq analysis from a count files, this code have been done during Statics courses in Master 1. *
+But theoricly if run gives you a whole pdf files wih the whole stqt analysis of your RNAseq.
+
+
+---
+title: "RNAseq Analysis proper"
+author: "DUTROIS Marius"
+date: "02/03/2022"
+output: 
+  pdf_document:
+    toc: true 
+    toc_depth: 3
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r setup, include = FALSE, error=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo=FALSE)
+require(tidyverse)
+require(gt)
+require(broom)
+require(bestNormalize)
+require(conflicted)
+require(FactoMineR)
+require(factoextra)
+require(readxl)
+require(rstatix)
+require(qqplotr)
+require(BiocManager)
+#BiocManager::install("qvalue")
+#BiocManager::install("biobroom")
+require(qvalue)
+require(biobroom)
+require(ggrepel)
+require(gtsummary)
+conflict_prefer("filter", "dplyr")
+conflict_prefer ("sreenplot", "PCAtools")
+conflict_prefer("biplot" ,"PCAtools")
+```
+
+
+
+# Marius Dutrois Data set n° 14.
+
+
+```{r DOE, include= FALSE}
+
+read.table(paste0(file= "~/mydatalocal/PS_2021_2022_DOE_Set14.txt"),
+           header = TRUE, sep = "\t") %>%
+  rownames_to_column("Sample") %>%
+  as_tibble()-> myDOE
+
+```
+
+
+
+```{r myresults, include= TRUE}
+
+read.table(paste0(file= "~/mydatalocal/PS_2021_2022_resultsSet14.txt"),
+           header = TRUE, sep = "\t") %>%
+  select(1,9:17) %>%
+  as_tibble()-> myResults
+
+```
+
+
+```{r Article}
+
+ "Simpson KJ, Olofsson JK, Ripley BS, Osborne CP. 2019 Frequent fires prime plant developmental responses to burning. Proc. R. Soc. B 286: 20191315. http://dx.doi.org/10.1098/rspb.2019.1315" -> NameArtCompl
+
+
+ "Frequent fires prime plant developmental responses to burning. 2019 Simpson KJ and al.," ->ArtAbr
+```
+
+
+The data set studied here was extracted from the results of this article `r NameArtCompl`.
+
+
+# 1. Get the design of experiment?
+
+
+```{r Compte}
+
+myDOE %>% group_by(Experiment) %>%
+  tally() %>%
+  gt() %>%
+  tab_header(title = "Table n°1: Design of experiment table.", subtitle = " One experimental factor for two levels burn (n=5) and control (n=4)." ) %>% tab_options(heading.align = "left", table_body.vlines.width = 10, heading.subtitle.font.size = 15)
+
+```
+
+
+This experimental set up (data set) has one experimental factor with two level called "Burn" or "Control", for the Burn condition have `r myDOE %>% group_by(Experiment) %>% tally() %>% filter("burn"==Experiment) %>% select(n) %>% unlist()` repetition and control `r myDOE %>% group_by(Experiment) %>% tally() %>% filter("control"==Experiment) %>% select(n) %>% unlist()`. No other indications are given. So it's supposed here , in a first time, there is only one experimental factor.
+
+
+# 2. Identify what is measured ?
+
+
+```{r HeadofMeasurement}
+
+myResults %>%
+  head(n=1L ) %>% gt() %>%
+  fmt_number(columns=2:10, decimals = 3) %>%
+   tab_header(title = "Table n°2: Type of variable of the Dataset.", subtitle = "The Transcript are visibly studied in this data set.") %>% tab_options(heading.align = "left")
+
+```
+
+
+For each repetition BXz1 or TBXz1 the level of expression of Transcript with an ID are measured. 
+
+
+# 3. Define the type(s) of data ?
+
+
+The data are quantitative and continuous.
+
+
+```{r DataType, message=FALSE}
+
+myResults %>% select(-TranscriptID) %>% tbl_summary()%>% modify_caption("Table n°3 : Description of the data-set")
+
+```
+
+
+The data set has shown a `r myResults %>% count() %>% unlist()` transcripts studied for each samples with a median expression around 8.6 (median max for B7z1 with 8.68 and median min TB4Z1).
+
+
+# 4. Identify which factor (and level) ?
+
+
+We have one experimental factor with two levels ; burn or control like previously said and we have a technical factor with the biologic repetition n=`r myDOE %>% group_by(Experiment) %>% tally() %>% filter("burn"==Experiment) %>% select(n) %>% unlist()` for the burn level and n=`r myDOE %>% group_by(Experiment) %>% tally() %>% filter("control"==Experiment) %>% select(n) %>% unlist()` for the control level.
+
+Nothing lets us think there is any other factors on the data set here.
+
+
+# 5. Write the variance model ?
+
+
+With the present knowledge about the data set we can write Transcript expression ~ Experiment*Repetition. The following statistics study wants to determine if this variance model is right and if it can extract any new significant information on this data set.
+
+
+# 6. Check the parametric requirements
+
+
+ All statistical analysis need some parametric requirements to be done and gives a satisfying answer. These requirements are the Normality of the data set and the homoskedasticity of the variance. 
+ 
+ 
+## a-Normality :
+
+
+The test of normality, tests the normal distribution, and in sum if the data set follows a normal law in their distribution of the value around the mean. 
+
+
+### 1-Graphique visualisation : 
+
+
+For the graphic verification of the normality it was done the real distribution of the data set and the normal distribution of a perfect normal law with the same mean, effective and standard deviation.
+
+
+```{r NormalityGraphe, fig.height = 3, fig.width= 5 }
+
+myResults %>%
+  pivot_longer(cols = 2:10) %>%
+  select (value) %>%
+  count() -> nombre
+
+myResults %>%
+  pivot_longer(cols = 2:10) %>%
+  summarize(moyenne = mean(value),
+            ecart_type = sd(value)) -> moy_ET
+
+rnorm(n = nombre$n,
+      mean = moy_ET$moyenne,
+      sd = moy_ET$ecart_type ) -> distribTheo
+
+myResults %>%
+  pivot_longer(cols = 2:10) %>%
+  ggplot() + geom_density(aes(x = value)) + geom_density(aes( x = distribTheo ), color = "red") + ggtitle("Figure n°1 : Distribution of the data set.", subtitle ="The data set distribution in black are compared to the perfect \n normal curve of same parameter in red.")->GRaphwithoutNorm
+
+GRaphwithoutNorm
+
+```
+
+
+This first figure of the distribution shows a big shift between the two curves, the data set probably doesn't follow a normal law in this distribution.
+ The following test of Shapiro and Wilk confirmed this observation.
+
+
+### 2-Test of Normality :
+
+
+```{r NormalityTest }
+ 
+myResults %>%
+  pivot_longer(cols = 2:10) %>%
+  select(value) %>%
+  sample_n(size =5000) %>%
+  unlist() %>%
+  shapiro.test() %>%
+  tidy() -> NTS
+NTS %>% gt()  %>%
+   tab_header(title = "Table n° 4: Test of shapiro and wilk.", subtitle = "This test of normality with the original dataset shown a low p-value." ) %>% tab_options(heading.align = "left") -> NormalityTestShapiro
+
+NormalityTestShapiro
+
+```
+
+
+ The p-value `r NTS %>% select(p.value) %>% unlist()` of this test is close to this limit so the normality of the original data set is bad, so the data set to perform the analysis needs a normalization performed in this case with a better Normalize library.
+
+
+### 3-Data set normalization and second verification :
+
+
+```{r DatasetNormalize }
+
+myResults %>%
+  pivot_longer(cols = 2:10) %>%
+  select(value) %>%
+  unlist() %>%
+  bestNormalize() -> myResultsExprModel
+
+myResults %>%
+  pivot_longer(cols = 2:10) %>%
+  select(value) %>%
+  mutate(ExpressionNorm = predict(myResultsExprModel))-> myResultsNormalizedLong1
+
+myResults %>%
+  pivot_longer(cols = 2:10) %>%
+  mutate(ExpressionNorm = predict(myResultsExprModel))-> myResultsNormalizedLong2
+
+```
+
+
+
+```{r NormalizeGraphNormality,  fig.height = 3, fig.width= 5 }
+
+myResultsNormalizedLong1 %>%
+  ggplot() +
+  geom_density(aes(x = value)) +
+  geom_density(aes( x = distribTheo ), color = "red") +
+  geom_density(aes(x = ExpressionNorm + moy_ET$moyenne), color="magenta") + ggtitle("Figure n° 2 : Distribution of the data set normalized", subtitle = "The original data set distribution in black, the perfect distribution of \n same parameter in red and the distribution of the normalized data \n set in magenta.") -> GraphicNormalize
+
+GraphicNormalize
+
+```
+
+
+The normalized data set distribution seems to be closer to the perfect normal distribution of same parameter but is highly divergent too.
+
+
+```{r NormalizeTestNormality}
+
+myResultsNormalizedLong1 %>%
+  select(ExpressionNorm) %>%
+  sample_n(size =5000) %>%
+  unlist() %>%
+  shapiro.test() %>%
+  tidy() -> NSDN 
+ NSDN%>% gt() %>%
+   tab_header(title = "Table n°5: Test of shapiro and wilk on normalized dataset.", subtitle = "The normalization of the dataset was performed with bestNormalized and shows a higher p-value than the original dataset." ) %>% tab_options(heading.align = "left") -> NormalityTestShapiroDataNormalized
+
+NormalityTestShapiroDataNormalized 
+
+```
+
+
+ The test of Shapiro and Wilk on the normalize data set shown a higher p-value = `r NSDN  %>% select(p.value) %>% unlist()` than the original data set. This p-value was considered acceptable to continue the data analysis but `r NSDN  %>% select(p.value) %>% unlist()` isn't really a good p-value and the data set has a bad quality. One of the reasons is that the over representation of the value close to 0 caused by the limit of RNA seq Technic.
+ 
+ 
+## b-Homoskedasticity
+
+
+The homoskedasticity traduces the homogeneity of the variance and is needed for any analysis of the variance.
+
+
+### 1-Homoskedasticity visualisation :
+
+
+```{r homoskedasticityGraph,  fig.height = 3, fig.width= 5, fig.align='left'}
+
+myResults %>%
+  pivot_longer(cols = 2:10) %>%
+  ggplot()+geom_boxplot(aes(y = value, color = name))+ ggtitle("Figure n°3 : Box plot of the value.", subtitle ="For each samples the box plot has   a similar profile.")
+
+
+```
+
+
+The Box plot of the value in function of the sample that has been done seems to have the same variance. So the data set can be homoskedastic. This graphic observation needs to be confirmed by a test of homoskedasticity.
+
+
+### 2-Homoskedasticity test : 
+
+
+```{r HomoskadasticityTest}  
+
+myResultsNormalizedLong2 %>%
+  bartlett.test(formula = value~name, data=.) %>%
+  tidy() %>%
+  gt() %>% fmt_number(columns=1:2, decimals = 4) %>%
+   tab_header(title = " Table n°6 Test of Bartlett for Homoskedasticity on original data set.", subtitle = "The bartlett test shown a p-value of 0.0497, which is not really a high p-value." ) %>% tab_options(heading.align = "left")
+
+myResultsNormalizedLong2 %>%
+  bartlett.test(formula = ExpressionNorm~name, data=.) %>%
+  tidy() %>%
+  gt() %>% fmt_number(columns=1:2, decimals = 4) %>%
+   tab_header(title = " Table n°7 Test of Bartlett for Homoskedasticity on normalized data set.", subtitle = "The bartlett test shown a p-value of 0.2081, which is not really a high p-value." ) %>% tab_options(heading.align = "left")
+
+
+```
+
+
+The test of variance homogeneity was performed with a Bartlett test on the original data set and the normalized data set. In a Bartlett test a low p-value shows the heteroskedasticity of the data. The p.values are, in the present case, considered acceptable for the normalized data set with p-value = `r myResultsNormalizedLong2 %>% bartlett.test(formula = ExpressionNorm~name, data=.) %>% tidy() %>% select("p.value") %>% unlist() ` but not for the original data set p-value = `r myResultsNormalizedLong2 %>% bartlett.test(formula = value~name, data=.) %>% tidy() %>% select("p.value") %>% unlist() `.
+
+  So now the parametric requirement is accepted. The variability can be explored in the following parts.
+
+ 
+# 7. Exploration of the variability
+
+
+ To explore the variability a Principal Component Analysis is needed and after an ANalysis Of VAriance. (PCA &ANOVA) 
+
+
+## a-PCA and dimension participation
+
+
+```{r Variance-PCA, message=FALSE, error=FALSE,  fig.height = 3, fig.width= 5, warning=FALSE}
+
+myResults %>%
+  select(-TranscriptID) %>%
+  t() %>%
+  as_tibble() %>% 
+  rename_with(~(myResults %>% select(TranscriptID) %>% unlist()))->ResultsTranspo
+
+myDOE %>%
+bind_cols(ResultsTranspo) -> DRvar
+
+DRvar %>% PCA(quali.sup = 1:3, graph =FALSE) -> DRvarPCA
+
+myResultsNormalizedLong2 %>%
+  select(-value) %>%
+  pivot_wider(names_from = TranscriptID, 
+              values_from = ExpressionNorm)->myResult2transpo
+
+myDOE %>%
+bind_cols(myResult2transpo) %>%
+  select(-name)-> DRvar2
+
+```
+
+
+
+```{r PCAGRAPE1,  message=FALSE, error=FALSE,  fig.height = 3, fig.width= 5 }
+
+DRvar2 %>% PCA(quali.sup = 1:3, graph =FALSE) -> DRvarPCA2
+
+
+DRvarPCA2 %>% fviz_pca_ind( habillage = 2, addEllipses = TRUE )+ ggtitle("Figure n°4: Ellipse of confidence and plots of \n the samples variance on the two principal dimensions.", subtitle = "The dimension n°1 (41.7%) is identified as caused by the \n experimental factors,plot 1 to 5 are burned condition \n samples and 6 to 9 the control.")
+
+```
+
+
+The ellipses of confidence are the result of a test, not caused by hazard. It shows here a superposition of the confidence area so we don't have significant differences between the two conditions. The major component of the variance corresponds to the experimental factor. The dimension two is artifact and can be explained when we show the in `r ArtAbr` , the authors evoked the disturbance caused when the plants are remove from these pots that maybe can explain the second dimension but that can be also the temperature of the starts of the experiments performed outside.
+
+
+```{r PCAGRAPE2, message=FALSE, error=FALSE,  fig.height = 5, fig.width= 6 }
+
+DRvarPCA2 %>% fviz_pca_var(geom ="point", label = "none")+ ggtitle("Figure n°5: Transcript (variable) plots \n of the variance on the two \n principal dimensions.", subtitle ="The dimension n°1 (41.7%) is identified as \n caused by the experimental factors")
+
+```
+
+
+The plot the closer to the center (0:0) has no variance explained by the two dimensions, the plot of coordinates (1:0) or (-1:0) has a variance explained in these two dimensions only caused by the experimental factors. To find differential transcript these plots are good targets.   
+
+
+```{r PCAGRAPE3, message=FALSE, error=FALSE,  fig.height = 3, fig.width= 6 }
+
+fviz_screeplot(DRvarPCA2)+ ggtitle("Figure n°6 : Histogramme of the variance participation \n of the dimension.", subtitle ="The dimension n°1 (41.7%) is identified as caused by the \n experimental factors, 8 dimensions are represented here \n (n samples - 1).")
+
+```
+
+
+It shows a high participation of the other dimensions in the variance. 
+
+Dim2 are artifact, a hide factors like previously said the burning treatment was performed not at the same time or temperature and the disturbence caused by the removing of the plants from the pots can be heterogeneous.
+
+In the screen plot, the dim 1 is the explain variance. To visualize all the variance of the sample it is needed 8 dimensions. So the dimensional reduction is needed to determine what is the cause of variance.
+The dimension reduction was done with the vector proper value.
+
+
+## b-ANOVA
+
+
+```{r Variance-ANOVA , message=FALSE, error=FALSE,}
+
+DRvar2 %>% 
+  pivot_longer(cols = 4:1003 , values_to ="ExpressionNorm") -> TableANOVA
+
+TableANOVA %>% anova_test(ExpressionNorm ~ Experiment*Repetition) %>% gt() %>% tab_header(title = "Table n°8: Twoway Anova test on the normalized data set. ", subtitle = " The variance model used for this test was the same shown previously." ) %>% tab_options(heading.align = "left") -> ANOVAtable
+
+ANOVAtable
+```
+
+
+The ANOVA here shows a high p-value for all the factors of the variance model, but lower are the experimental factors effect with a p-value=0,252. The ges are the probability of the factors to have an effect so the experimental factors have the higher ges and seem the more probable factor.
+
+
+``` {r PCAGRAPEorno, message=FALSE, error=FALSE,  fig.height = 3, fig.width= 5 }
+
+TableANOVA %>%
+  ggplot(aes(sample=ExpressionNorm))+
+  qqplotr::stat_qq_line(color="red", linetype="dashed", size=0.5) +
+  qqplotr::stat_pp_point(size=0.2, color ="darkgrey", alpha=0.75) +
+  facet_wrap( ~ Sample)+ ggtitle("Figure n° 7 : Plots of the normalized data set value with \n this theorical value.", subtitle ="") 
+
+``` 
+
+
+``` {r TableofPCA}
+
+TableANOVA %>%
+  aov(ExpressionNorm ~ Experiment*Repetition, data=.) %>%
+  tidy() %>%
+  mutate(varPC = (meansq / sum(meansq))*100) %>%
+  mutate_if(is.numeric, round, digits=3) -> TAParci
+  TAParci %>%
+  gt() %>%
+   tab_header(title = "Table n°9: Participation of the factors on the total variance.", subtitle = "The experimental shows the hiher p-value followed by the residual variancy. The repetition shown has an effect too." ) %>% tab_options(heading.align = "left") -> ANOVAtable2
+
+ANOVAtable2
+```
+
+
+The analysis of the participation of the factor shows the higher participation for the Experimental factors with `r TAParci %>% filter("Experiment" == term) %>% select("varPC") %>% unlist()` of the total participation, followed by the Residual variance `r TAParci %>% filter("Residuals" == term) %>% select("varPC") %>% unlist()` and badly the Repetition has an effect with `r TAParci %>% filter("Repetition" == term) %>% select("varPC") %>% unlist()` > 5%, but not the interaction between the factors `r TAParci %>% filter("Experiment:Repetition" == term) %>% select("varPC") %>% unlist()`.
+ 
+
+The high residual variance `r TAParci %>% filter("Residuals" == term) %>% select("varPC") %>% unlist()` can be explained by like previously explain by some error or limits in the protocol on `r ArtAbr`.
+
+The `r TAParci %>% filter("Repetition" == term) %>% select("varPC") %>% unlist()` of participation of the repetition factors shows a bad repeatability of the results, that support the error and limits in the `r ArtAbr` article.
+
+
+# 8. Search significant differences
+
+
+To determine the transcript differential express between the conditions it is needed to determine true or false positive or negative (only one at a time in biology we prefer control false positive values). Control of the false positive / q-values. 
+
+
+```{r SignificantDiff, warning=FALSE}
+
+TableANOVA %>% group_by(name) %>%
+  tukey_hsd(formula = ExpressionNorm ~ Experiment) %>%
+  select(-contains("signif")) %>%
+  arrange(p.adj) -> myTranscript.TurkeyHSD
+
+myTranscript.TurkeyHSD %>%  head(n=5L ) %>% gt() %>% tab_header(title = "Table n° 10 : Transcript different expression significant by Tukey test.", subtitle = " The complet table has a 1000 rows not all represented her.") %>% tab_options(heading.align = "left")
+
+
+myTranscript.TurkeyHSD %>% bind_cols(myTranscript.TurkeyHSD %>%
+               select(p.adj) %>%
+               unlist() %>%
+               qvalue() %>%
+               augment()) %>%
+  select(-p.adj) -> myTranscripts.TurkeyHSDqvalue
+
+myAlpha = 0.01
+
+myTranscripts.TurkeyHSDqvalue %>% dplyr::filter( p.value < myAlpha ) %>% count () %>% unlist() -> nbDEG
+
+FilterDGE = 1/nbDEG
+
+myTranscripts.TurkeyHSDqvalue %>% dplyr::filter( lfdr < FilterDGE ) -> myTranscriptTurkeyHSD.DEG
+
+myTranscriptTurkeyHSD.DEG %>% rename( "TranscriptID" = "name" )-> myTranscriptTurkeyHSD.DEG
+
+```
+
+
+After this Tukey test for a research of significant differences between the transcript of the two conditions it was done the calculation of the q.value and of the local false discovery rate (lfdr) and an alpha risk = `r myAlpha` is chosen as significantly acceptable, with that it was determined a maximum of lfdr  equal to `r 1/nbDEG`. With that it was determined the transcript with significant differential expression including maximum one false positive. 
+
+
+```{r SignificantDiffGraphic, warning=FALSE, message=FALSE, error=FALSE,  fig.height = 5, fig.width= 6 }
+
+myResults %>% left_join(y = myTranscriptTurkeyHSD.DEG, by ="TranscriptID") %>% mutate(DEG=case_when(((lfdr < 1/nbDEG ) & (estimate < 0 ))~"up",((lfdr < 1/nbDEG) & (estimate > 0))~"down", TRUE ~"non-Diff")) -> DEGresults
+
+myResults %>%
+left_join(myTranscriptTurkeyHSD.DEG, by = "TranscriptID") %>%
+mutate(DEG = case_when(
+  ((lfdr < 1/nbDEG) & (estimate < 0)) ~ "up", 
+  ((lfdr < 1/nbDEG) & (estimate > 0)) ~ "down", 
+  TRUE ~ "non-Diff"))->DEGresults
+
+
+DRvarPCA2 %>% fviz_pca_var(geom.var ="point", repel =TRUE, col.var = DEGresults$DEG, palette = c("darkred", "grey", "darkgreen"), pch = 16, pointsize = 2, alpha.var = .6) + geom_label_repel(x = DRvarPCA2$var$coord %>% as_tibble() %>% select(Dim.1) %>% unlist(), y = DRvarPCA2$var$coor %>% as_tibble() %>% select(Dim.2) %>% unlist(), label = ifelse(DEGresults$lfdr < 1/nbDEG/4, DEGresults$TranscriptID,""), size = 2, max.overlaps = 40, force = 30, force_pull = 2, label.size = .1, label.padding = .1, box.padding = .1, segment.size = .1, seed = 1) + theme(legend.position = "top") + ggtitle("Figure n° 8: Transcripte (variable) plots \n of the variance on the two \n principal dimension.", subtitle ="The up regulated genes in green, the down in red, alpha = 0,01")
+
+``` 
+
+
+Represented here in red and green the significantly up and down regulated on the two major dimensions and like previously said the transcripts significantly up or down regulated are in coordinate of (-1:0) or (1:0) at the extremity of the X-axis.
+
+
+
+``` {r TableofGenesupdown}
+
+DEGresults %>% filter(lfdr < 1/nbDEG, DEG == "up") %>%
+mutate(across(2:10, round, digits = 1)) %>%
+mutate(q.value = round(q.value, digits = 3)) %>%
+arrange(estimate) %>%
+select(-null.value,
+-conf.low,
+-conf.high,
+-p.value,
+-lfdr,
+-term,
+-estimate,
+-DEG,
+-group1,
+-group2) %>%
+gt() %>%
+tab_header(title = paste("Table n°11 :Expression of", DEGresults %>%
+filter(DEG == "up") %>%
+tally(),
+"up-regulated transcripts in burned samples"),
+subtitle = "including maximum 1 false-positive") %>%
+tab_spanner(label = "Burned",
+columns = 2:6) %>%
+tab_spanner(label = "Control",
+columns = 7:10) -> TableUpRegulated
+
+TableUpRegulated
+
+DEGresults %>%
+  filter(lfdr < 1/nbDEG, DEG =="down") %>%
+  mutate(across(2:10, round, digits=1)) %>%
+  mutate(q.value = round(q.value, digits = 3)) %>%
+  arrange(estimate) %>%
+  select(-null.value,
+         -conf.low,
+         -conf.high,
+         -p.value,
+         -lfdr,
+         -term,
+         -estimate,
+         -DEG,
+         -group1,
+         -group2) %>%
+  gt() %>%
+  tab_header( title = paste("Table n°12 :Expression of", DEGresults %>%
+              filter(DEG == "down") %>%
+                tally(),"down-regulated transcripts in burned samples"),
+              subtitle ="including maximum 1 false-positive") %>%
+  tab_spanner(label="Burned", columns = 2:6) %>%
+  tab_spanner(label ="Control", columns = 7:10)  -> TableDownRegulated
+
+TableDownRegulated
+
+``` 
+
+
+ So this data analysis of the data set provide by `r ArtAbr` reveals `r DEGresults %>% filter(lfdr < 1/nbDEG, DEG =="down") %>% count() %>% unlist()` down regulated genes after burned treatment and  `r DEGresults %>% filter(lfdr < 1/nbDEG, DEG =="up") %>% count() %>% unlist()` up regulated with the a maximum of one false positive and are significantly differential regulated genes with the burned treatment provide in `r ArtAbr`.
+ 
