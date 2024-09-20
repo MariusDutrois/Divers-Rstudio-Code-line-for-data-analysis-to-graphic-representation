@@ -5,7 +5,7 @@ But theoricly if run gives you a whole pdf files wih the whole stqt analysis of 
 
 
 ---
-title: "RNAseq Analysis proper"
+title: "RNAseq Analysis"
 author: "DUTROIS Marius"
 date: "02/03/2022"
 output: 
@@ -15,9 +15,10 @@ output:
 editor_options: 
   chunk_output_type: console
 ---
-
+#intal all package before to start
 
 ```{r setup, include = FALSE, error=FALSE, message=FALSE}
+require(xfun)
 knitr::opts_chunk$set(echo=FALSE)
 require(tidyverse)
 require(gt)
@@ -30,8 +31,8 @@ require(readxl)
 require(rstatix)
 require(qqplotr)
 require(BiocManager)
-#BiocManager::install("qvalue")
-#BiocManager::install("biobroom")
+BiocManager::install("qvalue")
+BiocManager::install("biobroom")
 require(qvalue)
 require(biobroom)
 require(ggrepel)
@@ -43,12 +44,11 @@ conflict_prefer("biplot" ,"PCAtools")
 
 
 
-# Marius Dutrois Data set n° 14.
 
 
 ```{r DOE, include= FALSE}
 
-read.table(paste0(file= "~/mydatalocal/PS_2021_2022_DOE_Set14.txt"),
+read.table(paste0(file= "~/directory/DOE_file.txt"),
            header = TRUE, sep = "\t") %>%
   rownames_to_column("Sample") %>%
   as_tibble()-> myDOE
@@ -59,7 +59,7 @@ read.table(paste0(file= "~/mydatalocal/PS_2021_2022_DOE_Set14.txt"),
 
 ```{r myresults, include= TRUE}
 
-read.table(paste0(file= "~/mydatalocal/PS_2021_2022_resultsSet14.txt"),
+read.table(paste0(file= "~/directory/results_file.txt"),
            header = TRUE, sep = "\t") %>%
   select(1,9:17) %>%
   as_tibble()-> myResults
@@ -67,19 +67,9 @@ read.table(paste0(file= "~/mydatalocal/PS_2021_2022_resultsSet14.txt"),
 ```
 
 
-```{r Article}
-
- "Simpson KJ, Olofsson JK, Ripley BS, Osborne CP. 2019 Frequent fires prime plant developmental responses to burning. Proc. R. Soc. B 286: 20191315. http://dx.doi.org/10.1098/rspb.2019.1315" -> NameArtCompl
 
 
- "Frequent fires prime plant developmental responses to burning. 2019 Simpson KJ and al.," ->ArtAbr
-```
-
-
-The data set studied here was extracted from the results of this article `r NameArtCompl`.
-
-
-# 1. Get the design of experiment?
+# 1. Get the design of experiment
 
 
 ```{r Compte}
@@ -87,22 +77,23 @@ The data set studied here was extracted from the results of this article `r Name
 myDOE %>% group_by(Experiment) %>%
   tally() %>%
   gt() %>%
-  tab_header(title = "Table n°1: Design of experiment table.", subtitle = " One experimental factor for two levels burn (n=5) and control (n=4)." ) %>% tab_options(heading.align = "left", table_body.vlines.width = 10, heading.subtitle.font.size = 15)
+  tab_header(title = "Table n°1: Design of experiment table.", subtitle = " XX" ) %>% tab_options(heading.align = "left", table_body.vlines.width = 10, heading.subtitle.font.size = 15)
 
 ```
 
 
-This experimental set up (data set) has one experimental factor with two level called "Burn" or "Control", for the Burn condition have `r myDOE %>% group_by(Experiment) %>% tally() %>% filter("burn"==Experiment) %>% select(n) %>% unlist()` repetition and control `r myDOE %>% group_by(Experiment) %>% tally() %>% filter("control"==Experiment) %>% select(n) %>% unlist()`. No other indications are given. So it's supposed here , in a first time, there is only one experimental factor.
+This experimental set up (data set) has one experimental factor with X, for the Y condition have `r myDOE %>% group_by(Experiment) %>% tally() %>% filter("Y"==Experiment) %>% select(n) %>% unlist()` repetition and Z `r myDOE %>% group_by(Experiment) %>% tally() %>% filter("Z"==Experiment) %>% select(n) %>% unlist()`. No other indications are given. So it's supposed here , in a first time, there is only one experimental factor.
 
 
-# 2. Identify what is measured ?
+# 2. Identify what is measured 
 
 
 ```{r HeadofMeasurement}
 
+# replace X & Y in fct
 myResults %>%
   head(n=1L ) %>% gt() %>%
-  fmt_number(columns=2:10, decimals = 3) %>%
+  fmt_number(columns=X:Y, decimals = 3) %>%
    tab_header(title = "Table n°2: Type of variable of the Dataset.", subtitle = "The Transcript are visibly studied in this data set.") %>% tab_options(heading.align = "left")
 
 ```
@@ -111,10 +102,9 @@ myResults %>%
 For each repetition BXz1 or TBXz1 the level of expression of Transcript with an ID are measured. 
 
 
-# 3. Define the type(s) of data ?
+# 3. Define the type(s) of data 
 
 
-The data are quantitative and continuous.
 
 
 ```{r DataType, message=FALSE}
@@ -124,18 +114,17 @@ myResults %>% select(-TranscriptID) %>% tbl_summary()%>% modify_caption("Table n
 ```
 
 
-The data set has shown a `r myResults %>% count() %>% unlist()` transcripts studied for each samples with a median expression around 8.6 (median max for B7z1 with 8.68 and median min TB4Z1).
+The data set has shown a `r myResults %>% count() %>% unlist()` transcripts studied.
 
 
-# 4. Identify which factor (and level) ?
+# 4. Identify which factor (and level)
 
 
-We have one experimental factor with two levels ; burn or control like previously said and we have a technical factor with the biologic repetition n=`r myDOE %>% group_by(Experiment) %>% tally() %>% filter("burn"==Experiment) %>% select(n) %>% unlist()` for the burn level and n=`r myDOE %>% group_by(Experiment) %>% tally() %>% filter("control"==Experiment) %>% select(n) %>% unlist()` for the control level.
-
-Nothing lets us think there is any other factors on the data set here.
+We have one X factor with Y levels ; X or Y like previously said and we have a technical factor with the biologic repetition n=`r myDOE %>% group_by(Experiment) %>% tally() %>% filter("Y"==Experiment) %>% select(n) %>% unlist()` for the burn level and n=`r myDOE %>% group_by(Experiment) %>% tally() %>% filter("X"==Experiment) %>% select(n) %>% unlist()` for the control level.
 
 
-# 5. Write the variance model ?
+
+# 5. Write the variance model 
 
 
 With the present knowledge about the data set we can write Transcript expression ~ Experiment*Repetition. The following statistics study wants to determine if this variance model is right and if it can extract any new significant information on this data set.
@@ -144,7 +133,7 @@ With the present knowledge about the data set we can write Transcript expression
 # 6. Check the parametric requirements
 
 
- All statistical analysis need some parametric requirements to be done and gives a satisfying answer. These requirements are the Normality of the data set and the homoskedasticity of the variance. 
+ All statistical analysis need some parametric requirements to be done and gives a satisfying answer. These requirements are the Normality of the data set and the homoskedasticity (Homogenty) of the variance. 
  
  
 ## a-Normality :
@@ -160,23 +149,24 @@ For the graphic verification of the normality it was done the real distribution 
 
 
 ```{r NormalityGraphe, fig.height = 3, fig.width= 5 }
+# replace X & Y in fct
 
 myResults %>%
-  pivot_longer(cols = 2:10) %>%
+  pivot_longer(cols = X:Y) %>%
   select (value) %>%
-  count() -> nombre
+  count() -> numbre
 
 myResults %>%
-  pivot_longer(cols = 2:10) %>%
-  summarize(moyenne = mean(value),
-            ecart_type = sd(value)) -> moy_ET
+  pivot_longer(cols = X:Y) %>%
+  summarize(Average = mean(value),
+            Typical_ecart = sd(value)) -> moy_ET
 
-rnorm(n = nombre$n,
-      mean = moy_ET$moyenne,
-      sd = moy_ET$ecart_type ) -> distribTheo
+rnorm(n = number$n,
+      mean = moy_ET$Average,
+      sd = moy_ET$Typical_ecart ) -> distribTheo
 
 myResults %>%
-  pivot_longer(cols = 2:10) %>%
+  pivot_longer(cols = X:Y) %>%
   ggplot() + geom_density(aes(x = value)) + geom_density(aes( x = distribTheo ), color = "red") + ggtitle("Figure n°1 : Distribution of the data set.", subtitle ="The data set distribution in black are compared to the perfect \n normal curve of same parameter in red.")->GRaphwithoutNorm
 
 GRaphwithoutNorm
@@ -192,14 +182,39 @@ This first figure of the distribution shows a big shift between the two curves, 
 
 
 ```{r NormalityTest }
- 
+
+# replace X & Y in fct
+# For more accuracy repeat the shapiro test
+
 myResults %>%
-  pivot_longer(cols = 2:10) %>%
+  pivot_longer(cols = X:Y) %>%
   select(value) %>%
   sample_n(size =5000) %>%
   unlist() %>%
   shapiro.test() %>%
-  tidy() -> NTS
+  tidy() -> NTS1
+
+myResults %>%
+  pivot_longer(cols = X:Y) %>%
+  select(value) %>%
+  sample_n(size =5000) %>%
+  unlist() %>%
+  shapiro.test() %>%
+  tidy() -> NTS2
+
+myResults %>%
+  pivot_longer(cols = X:Y) %>%
+  select(value) %>%
+  sample_n(size =5000) %>%
+  unlist() %>%
+  shapiro.test() %>%
+  tidy() -> NTS3
+
+rbind(NTS1,NTS2,NTS3) -> NTSbind
+
+NTSbind %>% summarize(statistic=mean(stastistic), p.value=mean(p.value)) %>% mutate(methods="Shapiro-Wilk normality test") -> NTS
+
+
 NTS %>% gt()  %>%
    tab_header(title = "Table n° 4: Test of shapiro and wilk.", subtitle = "This test of normality with the original dataset shown a low p-value." ) %>% tab_options(heading.align = "left") -> NormalityTestShapiro
 
@@ -215,21 +230,20 @@ NormalityTestShapiro
 
 
 ```{r DatasetNormalize }
+# replace X & Y in fct
+# For more accuracy repeat the shapiro test
 
 myResults %>%
-  pivot_longer(cols = 2:10) %>%
+  pivot_longer(cols = X:Y) %>%
   select(value) %>%
   unlist() %>%
   bestNormalize() -> myResultsExprModel
 
 myResults %>%
-  pivot_longer(cols = 2:10) %>%
+  pivot_longer(cols = X:Y) %>%
   select(value) %>%
   mutate(ExpressionNorm = predict(myResultsExprModel))-> myResultsNormalizedLong1
 
-myResults %>%
-  pivot_longer(cols = 2:10) %>%
-  mutate(ExpressionNorm = predict(myResultsExprModel))-> myResultsNormalizedLong2
 
 ```
 
@@ -241,7 +255,7 @@ myResultsNormalizedLong1 %>%
   ggplot() +
   geom_density(aes(x = value)) +
   geom_density(aes( x = distribTheo ), color = "red") +
-  geom_density(aes(x = ExpressionNorm + moy_ET$moyenne), color="magenta") + ggtitle("Figure n° 2 : Distribution of the data set normalized", subtitle = "The original data set distribution in black, the perfect distribution of \n same parameter in red and the distribution of the normalized data \n set in magenta.") -> GraphicNormalize
+  geom_density(aes(x = ExpressionNorm + moy_ET$Typical_ecart), color="magenta") + ggtitle("Figure n° 2 : Distribution of the data set normalized", subtitle = "The original data set distribution in black, the perfect distribution of \n same parameter in red and the distribution of the normalized data \n set in magenta.") -> GraphicNormalize
 
 GraphicNormalize
 
@@ -258,7 +272,26 @@ myResultsNormalizedLong1 %>%
   sample_n(size =5000) %>%
   unlist() %>%
   shapiro.test() %>%
-  tidy() -> NSDN 
+  tidy() -> NSDN1 
+
+myResultsNormalizedLong1 %>%
+  select(ExpressionNorm) %>%
+  sample_n(size =5000) %>%
+  unlist() %>%
+  shapiro.test() %>%
+  tidy() -> NSDN2 
+
+myResultsNormalizedLong1 %>%
+  select(ExpressionNorm) %>%
+  sample_n(size =5000) %>%
+  unlist() %>%
+  shapiro.test() %>%
+  tidy() -> NSDN3 
+
+rbind(NSDN1,NSDN2,NSDN3) -> NSDNbind
+
+NTSbind %>% summarize(statistic=mean(stastistic), p.value=mean(p.value)) %>% mutate(methods="Shapiro-Wilk normality test") -> NSDN
+
  NSDN%>% gt() %>%
    tab_header(title = "Table n°5: Test of shapiro and wilk on normalized dataset.", subtitle = "The normalization of the dataset was performed with bestNormalized and shows a higher p-value than the original dataset." ) %>% tab_options(heading.align = "left") -> NormalityTestShapiroDataNormalized
 
